@@ -4,7 +4,7 @@ use testcontainers::{
 };
 
 const NAME: &str = "valkey/valkey";
-const TAG: &str = "8.0.1-alpine";
+const TAG: &str = "8.0.2-alpine";
 
 /// Default port (6379) on which Valkey is exposed
 pub const VALKEY_PORT: ContainerPort = ContainerPort::Tcp(6379);
@@ -45,7 +45,24 @@ pub struct Valkey {
     /// (remove if there is another variable)
     /// Field is included to prevent this struct to be a unit struct.
     /// This allows extending functionality (and thus further variables) without breaking changes
-    _priv: (),
+    //_priv: (),
+    env_vars: BTreeMap<String, String>,
+}
+
+impl Valeky {
+     /// Create a new AnvilNode with the latest Foundry image
+     pub fn with_latest() -> Self {
+        Self {
+            tag: Some("latest".to_string()),
+            ..Default::default()
+        }
+    }
+
+    pub fn with_valkey_extra_flags(mut self, valkey_extra_flags: String) -> Self {
+        let mut env_vars = self.env_vars;
+        env_vars.insert("VALKEY_EXTRA_FLAGS".to_string(), flags);
+        Self { env_vars }
+    }
 }
 
 impl Image for Valkey {
@@ -59,6 +76,12 @@ impl Image for Valkey {
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
         vec![WaitFor::message_on_stdout("Ready to accept connections")]
+    }
+
+    fn env_vars(
+        &self,
+    ) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
+        &self.env_vars
     }
 }
 
@@ -78,7 +101,7 @@ mod tests {
 
         let client = redis::Client::open(url.as_ref()).unwrap();
         let mut con = client.get_connection().unwrap();
-
+        
         con.set::<_, _, ()>("my_key", 42).unwrap();
         let result: i64 = con.get("my_key").unwrap();
         assert_eq!(42, result);
