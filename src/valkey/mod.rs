@@ -2,6 +2,8 @@ use testcontainers::{
     core::{ContainerPort, WaitFor},
     Image,
 };
+use std::collections::BTreeMap;
+use std::borrow::Cow;
 
 const NAME: &str = "valkey/valkey";
 const TAG: &str = "8.0.2-alpine";
@@ -47,21 +49,23 @@ pub struct Valkey {
     /// This allows extending functionality (and thus further variables) without breaking changes
     //_priv: (),
     env_vars: BTreeMap<String, String>,
+    tag: Option<String>,
 }
 
-impl Valeky {
+impl Valkey {
      /// Create a new AnvilNode with the latest Foundry image
-     pub fn with_latest() -> Self {
+     pub fn latest() -> Self {
         Self {
             tag: Some("latest".to_string()),
             ..Default::default()
         }
     }
 
-    pub fn with_valkey_extra_flags(mut self, valkey_extra_flags: String) -> Self {
+    /// Add extra flags
+    pub fn with_valkey_extra_flags(self, valkey_extra_flags: String) -> Self {
         let mut env_vars = self.env_vars;
-        env_vars.insert("VALKEY_EXTRA_FLAGS".to_string(), flags);
-        Self { env_vars }
+        env_vars.insert("VALKEY_EXTRA_FLAGS".to_string(), valkey_extra_flags);
+        Self { env_vars, tag: self.tag }
     }
 }
 
@@ -71,7 +75,7 @@ impl Image for Valkey {
     }
 
     fn tag(&self) -> &str {
-        TAG
+        self.tag.as_deref().unwrap_or(TAG)
     }
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
@@ -83,6 +87,7 @@ impl Image for Valkey {
     ) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
         &self.env_vars
     }
+
 }
 
 #[cfg(test)]
@@ -105,6 +110,15 @@ mod tests {
         con.set::<_, _, ()>("my_key", 42).unwrap();
         let result: i64 = con.get("my_key").unwrap();
         assert_eq!(42, result);
+        Ok(())
+    }
+
+    #[test]
+    fn valkey_latest() -> Result<(), Box<dyn std::error::Error + 'static>> {
+        let _ = pretty_env_logger::try_init();
+        let node = Valkey::latest().start()?;
+        let tag = node.image().tag.clone();
+        assert_eq!(Some("latest".to_string()), tag);
         Ok(())
     }
 }
