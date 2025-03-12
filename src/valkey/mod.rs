@@ -62,9 +62,9 @@ impl Valkey {
     }
 
     /// Add extra flags
-    pub fn with_valkey_extra_flags(self, valkey_extra_flags: String) -> Self {
+    pub fn with_valkey_extra_flags(self, valkey_extra_flags: &str) -> Self {
         let mut env_vars = self.env_vars;
-        env_vars.insert("VALKEY_EXTRA_FLAGS".to_string(), valkey_extra_flags);
+        env_vars.insert("VALKEY_EXTRA_FLAGS".to_string(), valkey_extra_flags.to_string());
         Self { env_vars, tag: self.tag }
     }
 }
@@ -108,7 +108,7 @@ mod tests {
 
         let client = redis::Client::open(url.as_ref()).unwrap();
         let mut con = client.get_connection().unwrap();
-        
+
         con.set::<_, _, ()>("my_key", 42).unwrap();
         let result: i64 = con.get("my_key").unwrap();
         assert_eq!(42, result);
@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn valkey_extra_flags() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let _ = pretty_env_logger::try_init();
-        let node = Valkey::default().with_valkey_extra_flags("--maxmemory 2mb".to_string()).start()?;
+        let node = Valkey::default().with_valkey_extra_flags("--maxmemory 2mb").start()?;
         //let tag = node.image().tag.clone();
         //assert_eq!(Some(TAG.to_string()), tag);
 
