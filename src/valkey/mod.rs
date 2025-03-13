@@ -1,7 +1,4 @@
-use testcontainers::{
-    core::{ContainerPort, WaitFor},
-    Image,
-};
+use testcontainers::{core::{ContainerPort, WaitFor}, Image, CopyDataSource, CopyToContainer,};
 use std::collections::BTreeMap;
 use std::borrow::Cow;
 
@@ -46,6 +43,7 @@ pub const VALKEY_PORT: ContainerPort = ContainerPort::Tcp(6379);
 pub struct Valkey {
     env_vars: BTreeMap<String, String>,
     tag: Option<String>,
+    copy_to_sources: Vec<CopyToContainer>,  
 }
 
 impl Valkey {
@@ -81,7 +79,24 @@ impl Valkey {
     pub fn with_valkey_extra_flags(self, valkey_extra_flags: &str) -> Self {
         let mut env_vars = self.env_vars;
         env_vars.insert("VALKEY_EXTRA_FLAGS".to_string(), valkey_extra_flags.to_string());
-        Self { env_vars, tag: self.tag }
+        Self { env_vars, tag: self.tag, copy_to_sources: self.copy_to_sources }
+    }
+ 
+    /// Add custom valkey configuration.
+    /// 
+    /// # Example
+    /// ```
+    /// use testcontainers_modules::{
+    ///     testcontainers::runners::SyncRunner,
+    ///     valkey::{Valkey, VALKEY_PORT},
+    /// };
+    /// 
+    /// let valkey_instance = Valkey::default().with_valkey_conf("maxmemory 2mb".to_string().into_bytes(),).start().unwrap();
+    /// ```
+    pub fn with_valkey_conf(self, valky_conf: impl Into<CopyDataSource>) -> Self {
+        let mut copy_to_sources = self.copy_to_sources;
+        copy_to_sources.push(CopyToContainer::new(valky_conf.into(), "/usr/local/etc/valkey/valkey.conf"));
+        Self { env_vars: self.env_vars, tag: self.tag, copy_to_sources }
     }
 }
 
@@ -98,12 +113,23 @@ impl Image for Valkey {
         vec![WaitFor::message_on_stdout("Ready to accept connections")]
     }
 
-    fn env_vars(
-        &self,
-    ) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
+    fn env_vars(&self,) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
         &self.env_vars
     }
 
+    fn copy_to_sources(&self) -> impl IntoIterator<Item = &CopyToContainer> {
+        &self.copy_to_sources
+    }
+
+    fn cmd(&self) -> impl IntoIterator<Item = impl Into<Cow<'_, str>>> {
+        let command;
+        if self.copy_to_sources.len() > 0 {
+            command = vec!["valkey-server", "/usr/local/etc/valkey/valkey.conf"];
+        } else {
+            command = Vec::new();
+        }
+        command
+    }
 }
 
 #[cfg(test)]
@@ -161,6 +187,27 @@ mod tests {
     fn valkey_extra_flags() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let _ = pretty_env_logger::try_init();
         let node = Valkey::default().with_valkey_extra_flags("--maxmemory 2mb").start()?;
+        let tag = node.image().tag.clone();
+        assert_eq!(None, tag);
+        let tag_from_method = node.image().tag();
+        assert_eq!(TAG, tag_from_method);
+
+        let host_ip = node.get_host()?;
+        let host_port = node.get_host_port_ipv4(VALKEY_PORT)?;
+        let url = format!("redis://{host_ip}:{host_port}");
+
+        let client = redis::Client::open(url.as_ref()).unwrap();
+        let mut con = client.get_connection().unwrap();
+        let max_memory: HashMap<String, isize> = redis::cmd("CONFIG").arg("GET").arg("maxmemory").query(&mut con).unwrap();
+        let max = *max_memory.get("maxmemory").unwrap();
+        assert_eq!(2097152, max);
+        Ok(())
+    }
+
+    #[test]
+    fn valkey_conf() -> Result<(), Box<dyn std::error::Error + 'static>> {
+        let _ = pretty_env_logger::try_init();
+        let node = Valkey::default().with_valkey_conf("maxmemory 2mb".to_string().into_bytes(),).start()?;
         let tag = node.image().tag.clone();
         assert_eq!(None, tag);
         let tag_from_method = node.image().tag();
