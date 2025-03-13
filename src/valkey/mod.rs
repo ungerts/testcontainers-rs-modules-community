@@ -44,24 +44,40 @@ pub const VALKEY_PORT: ContainerPort = ContainerPort::Tcp(6379);
 /// [`VALKEY_PORT`]: super::VALKEY_PORT
 #[derive(Debug, Default, Clone)]
 pub struct Valkey {
-    /// (remove if there is another variable)
-    /// Field is included to prevent this struct to be a unit struct.
-    /// This allows extending functionality (and thus further variables) without breaking changes
-    //_priv: (),
     env_vars: BTreeMap<String, String>,
     tag: Option<String>,
 }
 
 impl Valkey {
-     /// Create a new AnvilNode with the latest Foundry image
-     pub fn latest() -> Self {
+    /// Create a new Valkey instance with the latest image.
+    /// 
+    /// # Example
+    /// ```
+    /// use testcontainers_modules::{
+    ///     testcontainers::runners::SyncRunner,
+    ///     valkey::{Valkey, VALKEY_PORT},
+    /// };
+    /// 
+    /// let valkey_instance = Valkey::latest().start().unwrap();
+    /// ```
+    pub fn latest() -> Self {
         Self {
             tag: Some("latest".to_string()),
             ..Default::default()
         }
     }
 
-    /// Add extra flags
+    /// Add extra flags by passing additional start arguments.
+    /// 
+    /// # Example
+    /// ```
+    /// use testcontainers_modules::{
+    ///     testcontainers::runners::SyncRunner,
+    ///     valkey::{Valkey, VALKEY_PORT},
+    /// };
+    /// 
+    /// let valkey_instance = Valkey::default().with_valkey_extra_flags("--maxmemory 2mb").start().unwrap();
+    /// ```
     pub fn with_valkey_extra_flags(self, valkey_extra_flags: &str) -> Self {
         let mut env_vars = self.env_vars;
         env_vars.insert("VALKEY_EXTRA_FLAGS".to_string(), valkey_extra_flags.to_string());
@@ -94,18 +110,22 @@ impl Image for Valkey {
 mod tests {
     use redis::Commands;
     use std::collections::HashMap;
-    //use crate::valkey::TAG;
-
-    use crate::{testcontainers::runners::SyncRunner, valkey::Valkey, valkey::VALKEY_PORT};
+    use testcontainers::Image;
+    use crate::{testcontainers::runners::SyncRunner, valkey::Valkey, valkey::VALKEY_PORT, valkey::TAG};
 
     #[test]
     fn valkey_fetch_an_integer() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let _ = pretty_env_logger::try_init();
         let node = Valkey::default().start()?;
+
+        let tag = node.image().tag.clone();
+        assert_eq!(None, tag);
+        let tag_from_method = node.image().tag();
+        assert_eq!(TAG, tag_from_method);
+
         let host_ip = node.get_host()?;
         let host_port = node.get_host_port_ipv4(VALKEY_PORT)?;
         let url = format!("redis://{host_ip}:{host_port}");
-
         let client = redis::Client::open(url.as_ref()).unwrap();
         let mut con = client.get_connection().unwrap();
 
@@ -119,8 +139,21 @@ mod tests {
     fn valkey_latest() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let _ = pretty_env_logger::try_init();
         let node = Valkey::latest().start()?;
+
         let tag = node.image().tag.clone();
         assert_eq!(Some("latest".to_string()), tag);
+        let tag_from_method = node.image().tag();
+        assert_eq!("latest", tag_from_method);
+
+        let host_ip = node.get_host()?;
+        let host_port = node.get_host_port_ipv4(VALKEY_PORT)?;
+        let url = format!("redis://{host_ip}:{host_port}");
+        let client = redis::Client::open(url.as_ref()).unwrap();
+        let mut con = client.get_connection().unwrap();
+
+        con.set::<_, _, ()>("my_key", 42).unwrap();
+        let result: i64 = con.get("my_key").unwrap();
+        assert_eq!(42, result);
         Ok(())
     }
 
@@ -128,8 +161,10 @@ mod tests {
     fn valkey_extra_flags() -> Result<(), Box<dyn std::error::Error + 'static>> {
         let _ = pretty_env_logger::try_init();
         let node = Valkey::default().with_valkey_extra_flags("--maxmemory 2mb").start()?;
-        //let tag = node.image().tag.clone();
-        //assert_eq!(Some(TAG.to_string()), tag);
+        let tag = node.image().tag.clone();
+        assert_eq!(None, tag);
+        let tag_from_method = node.image().tag();
+        assert_eq!(TAG, tag_from_method);
 
         let host_ip = node.get_host()?;
         let host_port = node.get_host_port_ipv4(VALKEY_PORT)?;
@@ -138,8 +173,8 @@ mod tests {
         let client = redis::Client::open(url.as_ref()).unwrap();
         let mut con = client.get_connection().unwrap();
         let max_memory: HashMap<String, isize> = redis::cmd("CONFIG").arg("GET").arg("maxmemory").query(&mut con).unwrap();
-        let max = max_memory.get("maxmemory").unwrap();
-        assert_eq!(&2097152, max);
+        let max = *max_memory.get("maxmemory").unwrap();
+        assert_eq!(2097152, max);
         Ok(())
     }
 }
