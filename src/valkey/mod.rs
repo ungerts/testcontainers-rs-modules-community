@@ -43,7 +43,7 @@ pub const VALKEY_PORT: ContainerPort = ContainerPort::Tcp(6379);
 pub struct Valkey {
     env_vars: BTreeMap<String, String>,
     tag: Option<String>,
-    copy_to_sources: Vec<CopyToContainer>,  
+    copy_to_container: Vec<CopyToContainer>,  
 }
 
 impl Valkey {
@@ -79,7 +79,7 @@ impl Valkey {
     pub fn with_valkey_extra_flags(self, valkey_extra_flags: &str) -> Self {
         let mut env_vars = self.env_vars;
         env_vars.insert("VALKEY_EXTRA_FLAGS".to_string(), valkey_extra_flags.to_string());
-        Self { env_vars, tag: self.tag, copy_to_sources: self.copy_to_sources }
+        Self { env_vars, tag: self.tag, copy_to_container: self.copy_to_container }
     }
  
     /// Add custom valkey configuration.
@@ -94,9 +94,9 @@ impl Valkey {
     /// let valkey_instance = Valkey::default().with_valkey_conf("maxmemory 2mb".to_string().into_bytes(),).start().unwrap();
     /// ```
     pub fn with_valkey_conf(self, valky_conf: impl Into<CopyDataSource>) -> Self {
-        let mut copy_to_sources = self.copy_to_sources;
-        copy_to_sources.push(CopyToContainer::new(valky_conf.into(), "/usr/local/etc/valkey/valkey.conf"));
-        Self { env_vars: self.env_vars, tag: self.tag, copy_to_sources }
+        let mut copy_to_container = self.copy_to_container;
+        copy_to_container.push(CopyToContainer::new(valky_conf.into(), "/usr/local/etc/valkey/valkey.conf"));
+        Self { env_vars: self.env_vars, tag: self.tag, copy_to_container }
     }
 }
 
@@ -118,12 +118,12 @@ impl Image for Valkey {
     }
 
     fn copy_to_sources(&self) -> impl IntoIterator<Item = &CopyToContainer> {
-        &self.copy_to_sources
+        &self.copy_to_container
     }
 
     fn cmd(&self) -> impl IntoIterator<Item = impl Into<Cow<'_, str>>> {
         let command;
-        if self.copy_to_sources.len() > 0 {
+        if self.copy_to_container.len() > 0 {
             command = vec!["valkey-server", "/usr/local/etc/valkey/valkey.conf"];
         } else {
             command = Vec::new();
@@ -148,6 +148,7 @@ mod tests {
         assert_eq!(None, tag);
         let tag_from_method = node.image().tag();
         assert_eq!(TAG, tag_from_method);
+        assert_eq!(0, node.image().copy_to_container.len());
 
         let host_ip = node.get_host()?;
         let host_port = node.get_host_port_ipv4(VALKEY_PORT)?;
@@ -170,6 +171,7 @@ mod tests {
         assert_eq!(Some("latest".to_string()), tag);
         let tag_from_method = node.image().tag();
         assert_eq!("latest", tag_from_method);
+        assert_eq!(0, node.image().copy_to_container.len());
 
         let host_ip = node.get_host()?;
         let host_port = node.get_host_port_ipv4(VALKEY_PORT)?;
@@ -191,6 +193,7 @@ mod tests {
         assert_eq!(None, tag);
         let tag_from_method = node.image().tag();
         assert_eq!(TAG, tag_from_method);
+        assert_eq!(0, node.image().copy_to_container.len());
 
         let host_ip = node.get_host()?;
         let host_port = node.get_host_port_ipv4(VALKEY_PORT)?;
@@ -212,6 +215,7 @@ mod tests {
         assert_eq!(None, tag);
         let tag_from_method = node.image().tag();
         assert_eq!(TAG, tag_from_method);
+        assert_eq!(1, node.image().copy_to_container.len());
 
         let host_ip = node.get_host()?;
         let host_port = node.get_host_port_ipv4(VALKEY_PORT)?;
